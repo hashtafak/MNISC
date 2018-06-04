@@ -1,18 +1,17 @@
 #!/bin/bash
 
 TMP_FOLDER=$(mktemp -d)
-CONFIG_FILE='gdc.conf'
-CONFIGFOLDER='/root/.gdc'
-COIN_DAEMON='gdcd'
-COIN_CLI='gdc-cli'
+CONFIG_FILE='gdnc.conf'
+CONFIGFOLDER='/root/.gdnc'
+COIN_DAEMON='gdncd'
+COIN_CLI='gdnc-cli'
 COIN_PATH='/usr/local/bin/'
 COIN_REPO='https://github.com/guardiancoin/gdc.git'
-COIN_TGZ='https://github.com/guardiancoin/gdc/releases/download/1.0.0.1/gdc-linux.tar.gz'
+COIN_TGZ='https://github.com/guardiancoin/GDNC/releases/download/1.2.0.1/gdnc-linux.tar.gz'
 COIN_ZIP=$(echo $COIN_TGZ | awk -F'/' '{print $NF}')
-COIN_NAME='GuardianCoin'
+COIN_NAME='Guardian'
 COIN_PORT=47100
 RPC_PORT=47200
-
 
 NODEIP=$(curl -s4 icanhazip.com)
 
@@ -21,12 +20,28 @@ YELLOW="\033[0;33m"
 CYAN="\033[0;36m" 
 PURPLE="\033[0;35m"
 RED='\033[0;31m'
-GREEN='\033[0;32m'
+GREEN="\033[0;32m"
 NC='\033[0m'
+MAG='\e[1;35m'
+
+purgeOldInstallation() {
+    echo -e "${GREEN}Searching and removing old $COIN_NAME files and configurations${NC}"
+    #kill wallet daemon
+    sudo killall gdcd > /dev/null 2>&1
+    #remove old ufw port allow
+    sudo ufw delete allow 47100/tcp > /dev/null 2>&1
+    #remove old files
+    if [ -d "~/.gdc" ]; then
+        sudo rm -rf ~/.gdc > /dev/null 2>&1
+    fi
+    #remove binaries and Guardian utilities
+    cd /usr/local/bin && sudo rm gdc-cli gdc-tx gdcd > /dev/null 2>&1 && cd
+    echo -e "${GREEN}* Done${NONE}";
+}
 
 
 function download_node() {
-  echo -e "Preparing to download VPS $COIN_NAME Daemon"
+  echo -e "${GREEN}Downloading and Installing VPS $COIN_NAME Daemon${NC}"
   cd $TMP_FOLDER >/dev/null 2>&1
   wget -q $COIN_TGZ
   compile_error
@@ -38,25 +53,29 @@ function download_node() {
   clear
 }
 
-
 function configure_systemd() {
   cat << EOF > /etc/systemd/system/$COIN_NAME.service
 [Unit]
 Description=$COIN_NAME service
 After=network.target
+
 [Service]
 User=root
 Group=root
+
 Type=forking
 #PIDFile=$CONFIGFOLDER/$COIN_NAME.pid
+
 ExecStart=$COIN_PATH$COIN_DAEMON -daemon -conf=$CONFIGFOLDER/$CONFIG_FILE -datadir=$CONFIGFOLDER
 ExecStop=-$COIN_PATH$COIN_CLI -conf=$CONFIGFOLDER/$CONFIG_FILE -datadir=$CONFIGFOLDER stop
+
 Restart=always
 PrivateTmp=true
 TimeoutStopSec=60s
 TimeoutStartSec=10s
 StartLimitInterval=120s
 StartLimitBurst=5
+
 [Install]
 WantedBy=multi-user.target
 EOF
@@ -83,7 +102,7 @@ function create_config() {
   cat << EOF > $CONFIGFOLDER/$CONFIG_FILE
 rpcuser=$RPCUSER
 rpcpassword=$RPCPASSWORD
-#rpcport=$RPC_PORT
+rpcport=$RPC_PORT
 rpcallowip=127.0.0.1
 listen=1
 server=1
@@ -93,7 +112,7 @@ EOF
 }
 
 function create_key() {
-  echo -e "Enter your ${RED}$COIN_NAME Masternode GEN Key${NC}. Leave it blank to generate a new ${RED}Masternode GEN Key${NC} for you:"
+  echo -e "${YELLOW}Enter your ${RED}$COIN_NAME Masternode GEN Key${NC}."
   read -e COINKEY
   if [[ -z "$COINKEY" ]]; then
   $COIN_PATH$COIN_DAEMON -daemon
@@ -123,6 +142,26 @@ maxconnections=256
 masternode=1
 externalip=$NODEIP:$COIN_PORT
 masternodeprivkey=$COINKEY
+
+#ADDNODES
+
+addnode=115.68.47.208:47100
+addnode=140.82.58.7:47100
+addnode=8.9.31.201:47100
+addnode=207.148.69.38:47100
+addnode=8.12.18.45:47100
+addnode=216.155.152.229:47100
+addnode=63.209.32.46:41700
+addnode=64.154.38.130:38158
+addnode=45.76.8.33:42544
+addnode=8.9.30.164:58958
+addnode=104.156.226.204:47100
+addnode=45.32.222.145:55710
+addnode=45.32.185.251:38548
+addnode=62.138.18.76:34590
+addnode=108.61.126.159:37238
+addnode=78.159.150.108:34590
+
 EOF
 }
 
@@ -188,12 +227,12 @@ fi
 }
 
 function prepare_system() {
-echo -e "Preparing the VPS to setup. ${GREEN}$COIN_NAME${NC} Masternode"
+echo -e "Preparing the VPS to setup. ${CYAN}$COIN_NAME${NC} ${RED}Masternode${NC}"
 apt-get update >/dev/null 2>&1
 DEBIAN_FRONTEND=noninteractive apt-get update > /dev/null 2>&1
 DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" -y -qq upgrade >/dev/null 2>&1
 apt install -y software-properties-common >/dev/null 2>&1
-echo -e "${GREEN}Adding bitcoin PPA repository"
+echo -e "${PURPLE}Adding bitcoin PPA repository"
 apt-add-repository -y ppa:bitcoin/bitcoin >/dev/null 2>&1
 echo -e "Installing required packages, it may take some time to finish.${NC}"
 apt-get update >/dev/null 2>&1
@@ -222,20 +261,25 @@ function important_information() {
  echo -e "${BLUE}================================================================================================================================${NC}"
  echo -e "${PURPLE}Windows Wallet Guide. https://github.com/Realbityoda/Guardian/blob/master/README.md${NC}"
  echo -e "${BLUE}================================================================================================================================${NC}"
- echo -e "$COIN_NAME Masternode is up and running listening on port ${RED}$COIN_PORT${NC}."
+ echo -e "$COIN_NAME Masternode is up and running listening on port ${GREEN}$COIN_PORT${NC}."
  echo -e "Configuration file is: ${RED}$CONFIGFOLDER/$CONFIG_FILE${NC}"
  echo -e "Start: ${RED}systemctl start $COIN_NAME.service${NC}"
  echo -e "Stop: ${RED}systemctl stop $COIN_NAME.service${NC}"
- echo -e "VPS_IP:PORT ${RED}$NODEIP:$COIN_PORT${NC}"
+ echo -e "VPS_IP:PORT ${GREEN}$NODEIP:$COIN_PORT${NC}"
  echo -e "MASTERNODE GENKEY is: ${RED}$COINKEY${NC}"
  echo -e "Please check ${RED}$COIN_NAME${NC} is running with the following command: ${RED}systemctl status $COIN_NAME.service${NC}"
+ echo -e "Use ${RED}$COIN_CLI masternode status${NC} to check your MN."
+ if [[ -n $SENTINEL_REPO  ]]; then
+ echo -e "${RED}Sentinel${NC} is installed in ${RED}/root/sentinel_$COIN_NAME${NC}"
+ echo -e "Sentinel logs is: ${RED}$CONFIGFOLDER/sentinel.log${NC}"
+ fi
  echo -e "${BLUE}================================================================================================================================"
  echo -e "${CYAN}Follow twitter to stay updated.  https://twitter.com/Real_Bit_Yoda${NC}"
  echo -e "${BLUE}================================================================================================================================${NC}"
  echo -e "${GREEN}Donations accepted but never required.${NC}"
  echo -e "${BLUE}================================================================================================================================${NC}"
  echo -e "${YELLOW}BCH: qzgnck23pwfag8ucz2f0vf0j5skshtuql5hmwwjhds"
- echo -e "${YELLOW}ETH:  0x765eA1753A1eB7b12500499405e811f4d5164554"
+ echo -e "${YELLOW}ETH: 0x765eA1753A1eB7b12500499405e811f4d5164554"
  echo -e "${YELLOW}LTC: LNt9EQputZK8djTSZyR3jE72o7NXNrb4aB${NC}"
  echo -e "${BLUE}================================================================================================================================${NC}"
 }
@@ -246,6 +290,7 @@ function setup_node() {
   create_key
   update_config
   enable_firewall
+  #install_sentinel
   important_information
   configure_systemd
 }
@@ -254,6 +299,7 @@ function setup_node() {
 ##### Main #####
 clear
 
+purgeOldInstallation
 checks
 prepare_system
 download_node
